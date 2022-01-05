@@ -1,0 +1,1734 @@
+#+TITLE: Init File
+#+AUTHOR: Tim Van den Langenbergh <tmt_vdl@gmx.com>
+#+PROPERTY: header-args :cache yes :results silent
+
+* General settings
+
+Various general Emacs settings: file management, moving around text (both moving the cursor around and moving the text around), handling internationalisation, completing commands,...
+
+#+NAME: general
+#+HEADER: :noweb yes
+#+BEGIN_SRC elisp
+  ;; Custom file:
+  <<custom-file>>
+
+  ;; Garbage collection:
+  <<garbage-collection>>
+
+  ;; Backups:
+  <<backups>>
+
+  ;; Load features:
+  <<load-features>>
+
+  ;; Reload init:
+  <<reload-init>>
+
+  ;; Recursive minibuffers:
+  <<recursive-minibuffers>>
+
+  ;; Scrolling:
+  <<scrolling>>
+
+  ;; Line wrapping:
+  <<line-wrapping>>
+
+  ;; Native compilation:
+  <<native-comp>>
+
+  ;; Leaving Emacs:
+  <<leaving>>
+
+  ;; Reload files:
+  <<reload-files>>
+
+  ;; Dwim keys:
+  <<dwim-keys>>
+
+  ;; M17N/I18N:
+  <<m17ni18n>>
+
+  ;; Text movement:
+  <<text-movement>>
+
+  ;; Transpose regions:
+  <<transpose-regions>>
+
+  ;; Match pairs:
+  <<match-pairs>>
+
+  ;; Location feedback:
+  <<location-feedback>>
+
+  ;; Frame settings:
+  <<frame-settings>>
+
+  ;; Time display:
+  <<time-display>>
+
+  ;; Completion:
+  <<completion>>
+
+  ;; File templates:
+  <<file-templates>>
+
+  ;; Buffer list:
+  <<buffer-list>>
+
+  ;; Window management:
+  <<window-management>>
+
+  ;; Expand region:
+  <<expand-region>>
+
+  ;; Multiple cursors:
+  <<multiple-cursors>>
+
+  ;; Undo tree:
+  <<undo-tree>>
+
+  ;; Which key:
+  <<which-key>>
+#+END_SRC
+
+** Loading existing customisations
+
+When customising variables, Emacs saves the relevant settings the so-called "custom-file". By default this is not set and it falls back to the initialisation file.
+We can explicitly set it to avoid cluttering up our init file, which also allows us to override any customizations that get saved in there.
+
+#+NAME: custom-file
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'custom-file
+   "~/.emacs.d/custom.el"
+   "File storing changes made by customise.")
+
+  (unless (file-exists-p custom-file)
+    (make-empty-file custom-file t))
+
+  (byte-compile-file custom-file)
+
+  (load custom-file)
+#+END_SRC
+
+** Garbage collection
+
+While Emacs on its own is quite responsive, tuning the garbage collector may allow us to squeeze out just a bit more performance.
+Increasing the threshold at which the garbage collector is run reduces how often it happens, but it will run longer. Experimentation may be required.
+The variable "garbage-collection-messages" may be set to t to make the garbage collector show messages when it runs.
+
+#+NAME: garbage-collection
+#+BEGIN_SRC elisp
+  (defconst init-preferred-gc-threshold
+    (* 8 1024 1024)
+    "An 8MB threshold to balance speed and responsiveness.")
+
+  (customize-set-variable
+   'gc-cons-threshold
+   init-preferred-gc-threshold
+   "Set the default GC threshold.")
+
+  (defun inhibit-gc nil
+    "Inhibit garbage collection."
+    (setq gc-cons-threshold most-positive-fixnum))
+
+  (defun resume-gc nil
+    "Resume garbage collection."
+    (setq gc-cons-threshold init-preferred-gc-threshold))
+
+  (add-hook 'minibuffer-setup-hook #'inhibit-gc)
+  (add-hook 'minibuffer-exit-hook #'resume-gc)
+#+END_SRC
+
+** Backups
+
+By default Emacs renames the file being edited, leaving it hidden in the directory, and makes a copy of it with its original name.
+This has the downside of littering the file systems with hidden backups which clutter up the output of "ls -A", and it may have issues with Tramp or symlinks.
+
+#+NAME: backups
+#+BEGIN_SRC elisp
+  (custom-set-variables
+   '(backup-by-copying
+     t
+     t nil
+     "Fix backups for Tramp and links.")
+   '(backup-directory-alist
+     '(("." . "~/.emacs.d/backups/"))
+     t nil
+     "Prevent backup files being scattered throughout file system."))
+
+  (dolist (binding backup-directory-alist)
+    (let ((the-dir (cdr binding)))
+      (unless (file-exists-p the-dir)
+	(make-directory the-dir t))))
+#+END_SRC
+
+** Load features
+
+Try to load various features before proceeding with the initialisation.
+
+#+NAME: load-features
+#+BEGIN_SRC elisp
+  (dolist (feature '(avy consult delight embark embark-consult expand-region
+						 geiser highlight-indent-guides marginalia modus-themes
+						 mu4e multiple-cursors notmuch orderless
+						 rainbow-delimiters smartparens undo-tree vertico
+						 which-key))
+	(ignore-errors
+	  (require feature)))
+#+END_SRC
+
+** Reload init
+
+As we have defined our entire initialisation file in this org file, it may behove us to set up a function that will regenerate and reload the resulting init.el file.
+
+#+NAME: reload-init
+#+BEGIN_SRC elisp
+  (defun init-reload-init nil
+	"Regenerate the init file and load it."
+	(interactive)
+	(let ((init-el-file "~/.emacs.d/init.el")
+		  (init-org-file "~/.emacs.d/init.org"))
+	  (require 'org)
+	  (require 'ob-tangle)
+
+	  (if (file-exists-p init-org-file)
+		  (save-excursion
+			(find-file init-org-file)
+			(org-babel-tangle)
+			(load-file init-el-file)
+			(byte-compile-file init-el-file)
+			(load init-el-file))
+		(warn "Could not find init.org!"))))
+#+END_SRC
+
+** Recursive minibuffers
+
+Normally the minibuffer can only be open once in a frame. This unfortunately means that we can't access certain helpful commands at that time.
+We can change this behaviour to allow multiple minibuffers to be opened at once, although that does mean we need to keep track of the minibuffers we have opened. Indicating the depth of the current minibuffer helps with that.
+
+#+NAME: recursive-minibuffers
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'enable-recursive-minibuffers
+   t
+   "Allow access to the minibuffer from in the minibuffer.")
+
+  (minibuffer-depth-indicate-mode t)
+#+END_SRC
+
+** Scrolling
+
+There are various ways to tweak how we scroll through buffers, I prefer avoiding making too large steps at once to keep my footing in a file.
+
+#+NAME: scrolling
+#+BEGIN_SRC elisp
+  (custom-set-variables
+   '(next-screen-context-lines
+     5
+     t nil
+     "Enable us to keep track of our location while scrolling.")
+   '(scroll-conservatively
+     11
+     t nil
+     "How many lines at a time Emacs can autoscroll.")
+   '(scroll-margin
+     1
+     t nil
+     "How far from the edge we start scrolling."))
+#+END_SRC
+
+** Line wrapping
+
+I like having an indicator at 79 columns in to let me know when a line is running too long for display on a TTY. It's also useful for keeping code readable, but that's under [[*Programming]].
+I also set up indicators in the fringes to show where lines are wrapped.
+
+#+NAME: line-wrapping
+#+BEGIN_SRC elisp
+  (custom-set-variables
+   '(fill-column
+	 79
+	 t nil
+	 "Help keep lines of a readable length.")
+   '(visual-line-fringe-indicators
+	 '(left-curly-arrow right-curly-arrow)
+	 t nil
+	 "Fringe bitmaps used to indicate rewrapping."))
+
+  (global-display-fill-column-indicator-mode t)
+  (global-visual-line-mode t)
+#+END_SRC
+
+** Native compilation
+
+The new native compilation functionality of Emacs logs any warnings that occur to a buffer that it by default pops up.
+As having a new buffer pop up suddenly is distracting, we can tell Emacs to keep logging but to not pop the buffer up.
+
+#+NAME: native-comp
+#+BEGIN_SRC elisp
+  (when (featurep 'comp)
+	(customize-set-variable
+	 'native-comp-async-report-warnings-errors
+	 'silent
+	 "Don't pop up the warnings buffer when logging."))
+#+END_SRC
+
+** Leaving Emacs
+
+Normally Emacs closes immediately when the "kill-emacs" function is ran, bar any unsaved buffers.
+We can tell it to ask for confirmation first in case we fat-finger the keybinding.
+
+#+NAME: leaving
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'confirm-kill-emacs
+   'y-or-n-p
+   "Ask for confirmation before exiting.")
+#+END_SRC
+
+** Reload files
+
+We can tell Emacs to monitor open files and to automatically reload them if they are changed on disk.
+
+#+NAME: reload-files
+#+BEGIN_SRC elisp
+  (global-auto-revert-mode t)
+#+END_SRC
+
+** Dwim keybindings
+
+There are a number of keybindings that have more "do what I mean" style functionality.
+For changing the capitalisation of words the dwim variants will work on the region if it is active.
+If the region is inactive, they work on the word after the cursor.
+Cycle spacing switches between one space, no space, or the original spacing based on the amount of times the function is called.
+
+#+NAME: dwim-keys
+#+BEGIN_SRC elisp
+  (global-set-key [remap upcase-word] 'upcase-dwim)
+  (global-set-key [remap downcase-word] 'downcase-dwim)
+  (global-set-key [remap capitalize-word] 'capitalize-dwim)
+
+  (dolist (unbind-function '(upcase-region downcase-region capitalize-region))
+	(dolist (keybinding (where-is-internal unbind-function))
+	  (global-unset-key keybinding)))
+
+  (global-set-key [remap just-one-space] 'cycle-spacing)
+#+END_SRC
+
+** M17N/I18N
+
+There are certain settings we can change for working in other languages.
+First off we can manage the fonts we use for specific scripts.
+Secondly we can tell Emacs that we want to work with various UTF-8 based languages.
+Thirdly we can manage our input methods.
+
+This configuration is only meant to be used for English, Dutch, German, French, and Japanese. Support for other languages may be lacking.
+
+#+NAME: m17ni18n
+#+BEGIN_SRC elisp
+  (defun set-alternative-fonts nil
+	(interactive)
+	"Set fonts for certain non-Latin scripts."
+	;; 漢字
+	(set-fontset-font
+	 t
+	 'han
+	 (font-spec :family "Kurinto Text JP"))
+	(set-fontset-font
+	 t
+	 'han
+	 (font-spec :family "Kurinto Text TC")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'han
+	 (font-spec :family "Kurinto Text CJK")
+	 nil
+	 'append)
+	;; かな
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Text JP"))
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Text CJK")
+	 nil
+	 'append)
+	;; Miscellaneous CJK characters.
+	(set-fontset-font
+	 t
+	 'cjk-misc
+	 (font-spec :family "Kurinto Text JP"))
+	(set-fontset-font
+	 t
+	 'cjk-misc
+	 (font-spec :family "Kurinto Text CJK")
+	 nil
+	 'append)
+	;; Emoji 🐐🌮
+	(set-fontset-font
+	 t
+	 'symbol
+	 (font-spec :family "Noto Color Emoji")))
+
+  (add-hook 'server-after-make-frame-hook #'set-alternative-fonts)
+
+  (set-language-environment "UTF-8")
+#+END_SRC
+
+** Text movement
+
+By default Emacs considers sentences to be separated only by two spaces, we can change that.
+Emacs also has functions for moving around and cutting paragraphs, which we can bind keys to.
+
+Finally we can set up use of the "avy" package, which allows easy movement around the visible portion of a buffer.
+Avy also has various other powerful functions, which aren't bound in this configuration.
+
+#+NAME: text-movement
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'sentence-end-double-space
+   nil
+   "Allow movement by 1-space separated sentences.")
+
+  (global-set-key (kbd "M-n") 'forward-paragraph)
+  (global-set-key (kbd "M-p") 'backward-paragraph)
+  (global-set-key (kbd "C-x M-k") 'kill-paragraph)
+
+  (when (featurep 'avy)
+    (global-set-key (kbd "M-g w") 'avy-goto-word-1))
+#+END_SRC
+
+** Transpose regions
+
+Emacs has a powerful mechanism to swap the locations of sections of text.
+By default the most powerful of these isn't bound to any keys, which we can change.
+The way transpose-regions works is that it switches the currently active region with the previously active region, if any.
+
+#+NAME: transpose-regions
+#+BEGIN_SRC elisp
+  (global-set-key (kbd "C-x C-M-t") 'transpose-regions)
+#+END_SRC
+
+** Matching pairs
+
+Emacs has built-in functionality to match pairs, be those parentheses or quotes.
+With electric-pair-mode on you can also wrap a region in matching pairs.
+The smartparens package has even more functionality, where it can split or unwrap expressions.
+If EPM and smartparens are active at the same time they will both insert a closing element when you insert an opening element. Therefore we will make certain EPM is deactivated when we activate smartparens.
+
+#+NAME: match-pairs
+#+BEGIN_SRC elisp
+  (if (featurep 'smartparens)
+	  (progn
+		(custom-set-variables
+		 '(sp-highlight-pair-overlay
+		   nil
+		   t nil
+		   "Disable autoinserted pairs highlighting.")
+		 '(sp-highlight-wrap-overlay
+		   nil
+		   t nil
+		   "Disable autoinserted pairs highlighting.")
+		 '(sp-highlight-wrap-tag-overlay
+		   nil
+		   t nil
+		   "Disable autoinserted pairs highlighting."))
+
+		(define-key smartparens-mode-map
+		  (kbd "M-[")
+		  'sp-unwrap-sexp)
+		(define-key smartparens-mode-map
+		  (kbd "M-]")
+		  'sp-backward-unwrap-sexp)
+		(define-key smartparens-mode-map
+		  (kbd "C-x M-s s")
+		  'sp-split-sexp)
+
+		(electric-pair-mode -1)
+		(smartparens-global-mode t))
+	(electric-pair-mode t))
+
+  (show-paren-mode t)
+#+END_SRC
+
+** Location feedback
+
+Emacs can highlight the current line, and show the current column in the modeline.
+Aside from that we can also activate line numbers.
+Setting the display type of the line numbers to relative also makes it easy see how large a block is.
+
+#+NAME: location-feedback
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'display-line-numbers-type
+   'relative
+   "By default `display-line-numbers-mode' shows absolute
+    line numbers.
+    I prefer relative line numbers to see how large a block of text is.")
+
+  (column-number-mode t)
+  (global-display-line-numbers-mode t)
+  (global-hl-line-mode t)
+#+END_SRC
+
+** Frame settings
+
+These settings change what a new frame looks like.
+Frame is the Emacs terminology for what most would nowadays call a window.
+Depending on the window manager you use Emacs may by default only resize to multiples of character width and height. Therefore we can tell Emacs to allow pixelwise resizing of frames.
+
+#+NAME: frame-settings
+#+BEGIN_SRC elisp
+  (custom-set-variables
+   '(default-frame-alist
+      '((font . "Kurinto Mono 10")
+	(fullscreen . maximized)
+	(left-fringe . 2)
+	(right-fringe . 2))
+      t nil
+      "Appearance of a new frame.")
+   '(frame-resize-pixelwise
+     t
+     t nil
+     "Don't restrict frame size to multiples of character width and height."))
+#+END_SRC
+
+** Display time and date
+
+Emacs can display the current date and time in the modeline.
+By default it only shows the time in 12 hour AM/PM format.
+The format used for display-time-format here shows the day of the week and the ISO 8601 date and time.
+For example: Thursday 1970-01-01 23:59.
+
+#+NAME: time-display
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'display-time-format
+   "%A %F %R"
+   "Display date & time as \"DayOfWeek yyyy-mm-dd HH:MM\".")
+
+  (display-time-mode t)
+#+END_SRC
+
+** Completion
+
+There are many, many ways to change the way Emacs completes commands, filenames, words, code, and so on.
+Here we will set up a number of completion aides based on which ones are available.
+The icomplete package is built-in and leverages the standard Emacs completion system. Some possible built-in alternatives are fido-mode (which is based on icomplete), or ido-mode.
+Vertico is a package that shows a vertical completion menu. It interfaces well with some other packages that are selected.
+
+#+NAME: completion
+#+HEADER: :noweb yes
+#+BEGIN_SRC elisp
+  (custom-set-variables
+   '(require-final-newline
+	 '?
+	 t nil
+	 "Offer to insert a newline at the end of a file.")
+   '(tab-always-indent
+	 'complete
+	 t nil
+	 "If a line is indented, try to complete at point.")
+   '(xref-show-definitions-function
+	 #'xref-show-definitions-completing-read
+	 t nil
+	 "Select a target for xref with the active completion framework."))
+
+  ;; Consult:
+  <<consult>>
+
+  ;; Embark:
+  <<embark>>
+
+  ;; Marginalia:
+  <<marginalia>>
+
+  ;; Orderless:
+  <<orderless>>
+
+  (if (featurep 'vertico)
+	  (progn
+			(customize-set-variable
+			 'vertico-cycle
+			 t
+			 "Enable cycling for `vertico-next' and `vertico-previous'.")
+
+			(icomplete-mode -1)
+			(vertico-mode t))
+	(progn
+	  (require 'icomplete)
+	  (customize-set-variable
+	   'icomplete-separator
+	   " ⋅ "
+	   "Use a rarely occuring symbol to separate candidates.")
+	  (icomplete-mode t)))
+#+END_SRC
+
+*** Abbreviations
+
+#+NAME: abbreviations
+#+BEGIN_SRC elisp
+  (require 'abbrev)
+  (abbrev-mode t)
+#+END_SRC
+
+*** Consult
+
+The consult package contains various commands that leverage our completion frameworks.
+There is a lot of functionality to cover, so I will refer you to describe-function.
+
+#+NAME: consult
+#+BEGIN_SRC elisp
+  (when (featurep 'consult)
+	(custom-set-variables
+	 '(consult-narrow-key
+	   "C-+"
+	   t nil
+	   "Use Consult narrowing.")
+	 '(register-preview-delay
+	   0
+	   t nil
+	   "Show register preview immediately.")
+	 '(register-preview-function
+	   #'consult-register-format
+	   t nil
+	   "Format register previews with Consult.")
+	 '(xref-show-xrefs-function
+	   #'consult-xref
+	   t nil
+	   "Use Consult to show Xrefs.")
+	 '(xref-show-definitions-function
+	   #'consult-xref
+	   t nil
+	   "Use Consult to show Xref definitions."))
+
+	(global-set-key (kbd "C-c b")
+					'consult-bookmark)
+	(global-set-key (kbd "C-c h")
+					'consult-history)
+	(global-set-key (kbd "C-c k")
+					'consult-kmacro)
+	(global-set-key (kbd "C-c m")
+					'consult-mode-command)
+
+	(global-set-key (kbd "C-x M-:")
+					'consult-complex-command)
+	(global-set-key (kbd "C-x b")
+					'consult-buffer)
+	(global-set-key (kbd "C-x 4 b")
+					'consult-buffer-other-window)
+	(global-set-key (kbd "C-x 5 b")
+					'consult-buffer-other-frame)
+
+	(global-set-key (kbd "M-#")
+					'consult-register-load)
+	(global-set-key (kbd "C-#")
+					'consult-register-store)
+	(global-set-key (kbd "C-M-#")
+					'consult-register)
+
+	(global-set-key (kbd "M-y")
+					'consult-yank-pop)
+
+	(global-set-key (kbd "<help> a")
+					'consult-apropos)
+
+	(global-set-key [remap goto-line]
+					'consult-goto-line)
+	(global-set-key (kbd "M-g e")
+					'consult-compile-error)
+	(global-set-key (kbd "M-g f")
+					'consult-flymake)
+	(global-set-key (kbd "M-g F")
+					'consult-flycheck)
+	(global-set-key (kbd "M-g i")
+					'consult-imenu)
+	(global-set-key (kbd "M-g I")
+					'consult-imenu-multi)
+	(global-set-key (kbd "M-g k")
+					'consult-global-mark)
+	(global-set-key (kbd "M-g o")
+					'consult-outline)
+	(global-set-key (kbd "M-g m")
+					'consult-mark)
+
+	(global-set-key (kbd "M-s f")
+					'consult-find)
+	(global-set-key (kbd "M-s F")
+					'consult-locate)
+	(global-set-key (kbd "M-s g")
+					'consult-ripgrep)
+	(global-set-key (kbd "M-s k")
+					'consult-keep-lines)
+	(global-set-key (kbd "M-s l")
+					'consult-line)
+	(global-set-key (kbd "M-s L")
+					'consult-line-multi)
+	(global-set-key (kbd "M-s m")
+					'consult-multi-occur)
+	(global-set-key (kbd "M-s u")
+					'consult-focus-lines)
+
+	(global-set-key (kbd "C-S-s")
+					'consult-isearch)
+
+	(define-key isearch-mode-map
+	  (kbd "M-E")
+	  'consult-isearch)
+	(define-key isearch-mode-map
+	  (kbd "M-s l")
+	  'consult-line)
+	(define-key isearch-mode-map
+	  (kbd "M-s L")
+	  'consult-line-multi)
+
+	(advice-add #'completing-read-multiple
+				:override
+				#'consult-completing-read-multiple))
+#+END_SRC
+
+*** Embark
+
+The embark adds functionality to completions, allowing us to perform various actions on completion candidates.
+Embark-consult interfaces embark with consult, further empowering the completion actions.
+
+#+NAME: embark
+#+BEGIN_SRC elisp
+  (when (featurep 'embark)
+	(define-key minibuffer-local-map
+	  (kbd "C-.")
+	  'embark-act)
+	(define-key minibuffer-local-map
+	  (kbd "C-;")
+	  'embark-dwim))
+
+  (when (featurep 'embark-consult)
+	(add-hook 'embark-collect-mode-hook #'consult-preview-at-point-mode))
+#+END_SRC
+
+*** Marginalia
+
+The marginalia package adds information to completion candidates.
+Some examples of information it can show are keybindings, function documentation, file information,...
+
+#+NAME: marginalia
+#+BEGIN_SRC elisp
+  (when (featurep 'marginalia)
+	(define-key minibuffer-local-map
+	  (kbd "M-A") 'marginalia-cycle)
+
+	(marginalia-mode t))
+#+END_SRC
+
+*** Orderless
+
+The orderless contains a completion mechanism that allows flexible matching.
+
+#+NAME: orderless
+#+BEGIN_SRC elisp
+  (when (featurep 'orderless)
+	(custom-set-variables
+	 '(completion-styles
+	   '(orderless)
+	   t nil
+	   "Use orderless completion style only.")
+	 '(completion-category-defaults
+	   nil
+	   t nil
+	   "Remove default completion styles for categories.")
+	 '(completion-category-overrides
+	   '((file (styles partial-completion)))
+	   t nil
+	   "Add partial completion for file names.")))
+#+END_SRC
+
+** File templates
+
+Emacs can automatically insert file templates through the autoinsert functionality.
+It also contains a powerful and versatile way to declare file templates, called skeleton.
+
+#+NAME: file-templates
+#+BEGIN_SRC elisp
+  (require 'autoinsert)
+  (require 'skeleton)
+
+  (define-skeleton perl-script-skeleton
+	"Skeleton for Perl scripts."
+	nil
+	"#!/usr/bin/perl" \n
+	"use strict;" \n
+	(unless (string-prefix-p "n"
+							 (skeleton-read "Use utf8? Y/n ")
+							 t)
+	  "use utf8;\n")
+	"use warnings;" \n
+
+	\n
+
+	"use "
+	(let ((version (skeleton-read "Version to use (5.010): ")))
+	  (if (string= version "")
+		  "5.010"
+		version))
+	";" \n
+
+	\n \n
+
+	_ \n
+
+	\n \n
+
+	"__END__" "\n\n"
+	"=head1 NAME" "\n\n"
+	(skeleton-read "NAME: ") "\n\n"
+	"=head1 SYNOPSIS" "\n\n\n"
+	"=head1 DESCRIPTION" "\n\n\n"
+	"=head1 COPYRIGHT" "\n\n"
+	"Copyright (C) " (substring (current-time-string) -4) " "
+	(progn user-full-name) "\n\n"
+	"This library is free software; you can redistribute it and/or" "\n"
+	"mody it under the same terms as Perl itself." "\n\n"
+	"=cut" "\n")
+
+  (let ((existing-skeleton (assoc '("\\.pl\\'" . "Perl skeleton")
+								  auto-insert-alist)))
+	(if existing-skeleton
+		(setcdr existing-skeleton 'perl-script-skeleton)
+	  (define-auto-insert
+		'("\\.pl\\'" . "Perl skeleton")
+		'perl-script-skeleton)))
+
+  ;; Allows automatic insertion of a template when creating a new file with a
+  ;; specific extension.
+  (auto-insert-mode t)
+#+END_SRC
+
+** Buffer list
+
+Emacs can display a list of currently open buffers.
+The default functionality is not very impressive, but it comes with a more powerful alternative called ibuffer.
+
+#+NAME: buffer-list
+#+BEGIN_SRC elisp
+  (require 'ibuffer)
+
+  (global-set-key [remap list-buffers] 'ibuffer)
+#+END_SRC
+
+** Window management
+
+What Emacs calls windows some would call buffers, other may call them split views.
+Regardless of the terminology we use, Emacs offers various useful functions for managing them.
+We can change their sizes, quickly move between them based on their relative locations, and even store and recover layouts.
+
+#+NAME: window-management
+#+BEGIN_SRC elisp
+  (global-set-key (kbd "C-S-<left>") 'shrink-window-horizontally)
+  (global-set-key (kbd "C-S-<right>") 'enlarge-window-horizontally)
+  (global-set-key (kbd "C-S-<down>") 'shrink-window)
+  (global-set-key (kbd "C-S-<up>") 'enlarge-window)
+
+  (require 'windmove)
+
+  (global-set-key (kbd "C-x 4 <down>") 'windmove-down)
+  (global-set-key (kbd "C-x 4 <left>") 'windmove-left)
+  (global-set-key (kbd "C-x 4 <right>") 'windmove-right)
+  (global-set-key (kbd "C-x 4 <up>") 'windmove-up)
+
+  (require 'winner)
+  (winner-mode t)
+#+END_SRC
+
+** Expand region
+
+The expand region package adds functionality to easily highlight large chunks of text.
+
+#+NAME: expand-region
+#+BEGIN_SRC elisp
+  (when (featurep 'expand-region)
+	(global-set-key (kbd "C-=") 'er/expand-region))
+#+END_SRC
+
+** Multiple cursors
+
+The multiple cursors package adds functions to create cursors at multiple locations.
+This allows easy editing of related sections of text.
+
+#+NAME: multiple-cursors
+#+BEGIN_SRC elisp
+  (when (featurep 'multiple-cursors)
+	(global-set-key (kbd "C-S-c C-S-c") 'mc/edit-lines)
+	(global-set-key (kbd "C->") 'mc/mark-next-like-this)
+	(global-set-key (kbd "C-<") 'mc/mark-previous-like-this)
+	(global-set-key (kbd "C-S-c @") 'mc/mark-sgml-tag-pair)
+	(global-set-key (kbd "C-S-c %") 'mc/mark-all-dwim)
+	(global-set-key (kbd "C-S-c DEL") 'mc/unmark-next-like-this)
+	(global-set-key (kbd "C-S-c d") 'mc/unmark-previous-like-this)
+	(global-set-key (kbd "C-S-c C->") 'mc/skip-to-next-like-this)
+	(global-set-key (kbd "C-S-c C-<") 'mc/skip-to-previous-like-this)
+	(global-set-key (kbd "C-S-c s") 'mc/sort-regions)
+	(global-set-key (kbd "C-S-c r") 'mc/reverse-regions)
+	(global-set-key (kbd "C-S-<mouse-1>") 'mc/add-cursor-on-click))
+#+END_SRC
+
+** Undo tree
+
+The undo tree package changes the way Emacs' undo functionality works.
+By default Emacs stores edits in a tree that undo can traverse depthwise.
+This is very powerful, but unfortunately it means that getting the buffer back to a specific state can take a lot of traversing.
+Undo tree solves this by making the undo and redo functionality work in a straight path.
+When a branch point is reached the most recent path is followed unless the user chooses to switch to a different path.
+Undo tree also saves the undo history, so we will make sure the undo files are kept together.
+
+#+NAME: undo-tree
+#+BEGIN_SRC elisp
+  (when (featurep 'undo-tree)
+	(customize-set-variable
+	 'undo-tree-history-directory-alist
+	 '(("." . "~/.emacs.d/undo-tree/"))
+	 "Where to save undo-tree history.")
+
+	(global-undo-tree-mode t))
+#+END_SRC
+
+** Which key
+
+Which key is a package that shows possible continuations of a chord.
+Thus we only need to remember the start of a chord and it can show us the continuation.
+
+#+NAME: which-key
+#+BEGIN_SRC elisp
+  (when (featurep 'which-key)
+	(which-key-mode t))
+#+END_SRC
+
+* Look and feel
+
+A lot of packages exist to change the way Emacs looks.
+We can use the Modus themes that are built in to Emacs as they both look good and have good accessibility.
+Based on the font we use we may also want to adjust some faces.
+
+#+NAME: look-and-feel
+#+HEADER: :noweb yes
+#+BEGIN_SRC elisp
+  ;; Custom faces:
+  <<custom-faces>>
+
+  ;; Cursor blink:
+  <<cursor-blink>>
+
+  ;; Tab width:
+  <<tab-width>>
+
+  ;; Modus themes:
+  <<modus-themes>>
+
+  ;; Delight
+  <<delight>>
+#+END_SRC
+
+** Custom faces
+
+Faces are basically the way Emacs themes certain text.
+Since we're using Kurinto Mono as our standard fixed-pitch font and it doesn't offer a serif variation we will want to adjust the fixed-pitch-serif face.
+For variable-pitch text (non-monospace) I prefer using a serif font.
+
+#+NAME: custom-faces
+#+BEGIN_SRC elisp
+  ;; Custom faces.
+  (custom-set-faces
+   '(fixed-pitch
+     ((t
+       (:family "Kurinto Mono")))
+     t "The standard monospace font.")
+   '(fixed-pitch-serif
+     ((t
+       (:inherit (fixed-pitch)
+		 :box "grey80")))
+     t "As Kurinto does not provide a serif monospace font, we just put a box
+  around the regular monospace font.")
+   '(variable-pitch
+     ((t
+       (:family "Kurinto Text")))
+     t "Font to use for variable-pitch faces."))
+#+END_SRC
+
+** Cursor blink
+
+We can disable cursor blink to reduce its distracting effect.
+
+#+NAME: cursor-blink
+#+BEGIN_SRC elisp
+  (blink-cursor-mode -1)
+#+END_SRC
+
+** Tab width
+
+By default Emacs shows tabulators as being 8 spaces wide. We can adjust that to keep lines shorter.
+Some prefer disabling tabs as indentation, I like them for indenting even though it means we can't really align code.
+
+#+NAME: tab-width
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'tab-width
+   4
+   "Keep tabs at a reasonable width.")
+#+END_SRC
+
+** Modus themes
+
+The Modus themes that come with Emacs have various little customisations that can be made.
+One customisation that isn't activated is better accessibility for those with deuteranopia.
+
+#+NAME: modus-themes
+#+BEGIN_SRC elisp
+  (when (featurep 'modus-themes)
+	(load-theme 'modus-operandi)
+	(modus-themes-load-themes)
+
+	(custom-set-variables
+	 '(modus-themes-bold-constructs
+	   t
+	   t nil
+	   "Display certain syntax in bold.")
+
+	 '(modus-themes-completions
+	   'opinionated
+	   t nil
+	   "Use Modus-themed elements in completion frameworks.")
+
+	 '(modus-themes-fringes
+	   'subtle
+	   t nil
+	   "Make the fringes lightly shaded.")
+
+	 '(modus-themes-headings
+	   '((t . (background overline)))
+	   t nil
+	   "Make headings pop a bit more.")
+
+	 '(modus-themes-hl-line
+	   '(accented underline)
+	   t nil
+	   "Make highlighted line stand out more.")
+
+	 '(modus-themes-italic-constructs
+	   t
+	   t nil
+	   "Display certain syntax in italic.")
+
+	 '(modus-themes-lang-checkers
+	   '(straight-underline)
+	   t nil
+	   "Make Flymake highlighting nicer.")
+
+	 '(modus-themes-mixed-fonts
+	   t
+	   t nil
+	   "Allow mixing variable-pitch and fixed-pitch fonts in a buffer.")
+
+	 '(modus-themes-org-blocks
+	   'tinted-background
+	   t nil
+	   "Give blocks in Org mode a colourful background.")
+
+	 '(modus-themes-paren-match
+	   '(bold)
+	   t nil
+	   "Make the element matching the one at point bold.")
+
+	 '(modus-themes-prompts
+	   '(background)
+	   t nil
+	   "Give prompts a colourful background.")
+
+	 '(modus-themes-region
+	   '(accented)
+	   t nil
+	   "Give the active region a dash of colour.")
+
+	 '(modus-themes-scale-headings
+	   t
+	   t nil
+	   "Allow headings to use larger fonts.")
+
+	 '(modus-themes-syntax
+	   '(green-strings yellow-comments)
+	   t nil
+	   "Use different colours for strings and comments.")
+
+	 '(modus-themes-variable-pitch-ui
+	   t
+	   t nil
+	   "Use variable-pitch typeface for UI elements."))
+
+	(modus-themes-load-operandi))
+#+END_SRC
+
+** Delight
+
+Delight is a package that allows us to hide certain modes from the modeline.
+It helps prevent the modeline becoming cluttered when we use a lot of packages.
+
+#+NAME: delight
+#+BEGIN_SRC elisp
+  (when (featurep 'delight)
+	(when (featurep 'highlight-indent-guides)
+	  (delight 'highlight-indent-guides-mode nil 'highlight-indent-guides))
+	(when (featurep 'smartparens)
+	  (delight 'smartparens-mode nil 'smartparens)
+	  (delight 'smartparens-strict-mode nil 'smartparens))
+	(when (featurep 'undo-tree)
+	  (delight 'undo-tree-mode nil 'undo-tree))
+	(delight 'visual-line-mode nil 'simple)
+	(when (featurep 'which-key)
+	  (delight 'which-key-mode nil 'which-key))
+	(delight 'whitespace-mode nil 'whitespace))
+#+END_SRC
+
+* Dired
+
+Dired is the Emacs file manager. It opens files or directories in a new buffer.
+By using dired-find-alternate-file, which is disabled by default, we can automatically close the active buffer afterwards.
+
+#+NAME: dired
+#+BEGIN_SRC elisp
+  (require 'dired)
+  (customize-set-variable
+   'dired-dwim-target
+   t
+   "Suggest the other window (if any) as target for move and copy operations.")
+
+  (put 'dired-find-alternate-file 'disabled nil)
+#+END_SRC
+
+* E-mail
+
+There are various ways for Emacs to handle e-mail.
+Some of the more popular packages are gnus, mu4e, notmuch, and wanderlust.
+What follows are some general settings and example settings for mu4e and notmuch.
+Mu and notmuch do rely on external configuration, so these settings may not be enough to get everything working.
+
+#+NAME: e-mail
+#+HEADER: :noweb yes
+#+BEGIN_SRC elisp
+  ;; SMTP set-up:
+  <<smtp-set-up>>
+
+  ;; Sign e-mail:
+  <<sign-e-mail>>
+
+  ;; Promote plain-text e-mail:
+  <<promote-plain-text-email>>
+
+  ;; Mu4e:
+  <<mu4e>>
+
+  ;; Notmuch:
+  <<notmuch>>
+#+END_SRC
+
+** SMTP set-up
+
+Emacs has built-in facilities to send e-mail via the SMTP protocol.
+
+#+NAME: smtp-set-up
+#+BEGIN_SRC elisp
+  (custom-set-variables
+   '(user-mail-address
+	 "tmt_vdl@gmx.com"
+	 t nil
+	 "E-mail address for receiving and sending e-mail.")
+   '(send-mail-function
+	 'smtpmail-send-it
+	 t nil
+	 "Use `smtpmail' to send mail.")
+   '(smtpmail-smtp-server
+	 "mail.gmx.com"
+	 t nil
+	 "Address of SMTP server.")
+   '(smtpmail-smtp-service
+	 587
+	 t nil
+	 "Port for STARTTLS protocol.")
+   '(smtpmail-stream-type
+	 'starttls
+	 t nil
+	 "Ask the server ot upgrade to its most up-to-date SSL/TLS version."))
+#+END_SRC
+
+** Sign e-mail
+
+We can tell Emacs to automatically use our GPG key to sign off on e-mail we send.
+
+#+NAME: sign-e-mail
+#+BEGIN_SRC elisp
+  (add-hook 'message-setup-hook #'mml-secure-sign-pgpmime)
+#+END_SRC
+
+** Promote plain-text e-mail
+
+We can tell Emacs to prefer displaying e-mail as plain text rather than showing rich text or HTML via EWW.
+
+#+NAME: promote-plain-text-e-mail
+#+BEGIN_SRC elisp
+  (when (featurep 'mm-decode)
+	(add-to-list 'mm-discouraged-alternatives "text/html")
+	(add-to-list 'mm-discouraged-alternatives "text/richtext"))
+#+END_SRC
+
+** Mu4e
+
+Mu4e is an Emacs frontend for the mu e-mail indexer.
+It comes with a fairly well-written manual in the Info directory.
+Mu is also known as maildir-utils.
+
+#+NAME: mu4e
+#+BEGIN_SRC elisp
+  (when (featurep 'mu4e)
+	(custom-set-variables
+	 '(mu4e-attachment-dir
+	   "~/Downloads/"
+	   t nil
+	   "Where to store attachments.")
+	 '(mu4e-drafts-folder
+	   "/gmx/Drafts/"
+	   t nil
+	   "Where to store drafts.")
+	 '(mu4e-get-mail-command
+	   "mbsync gmx"
+	   t nil
+	   "Sync with isync.")
+	 '(mu4e-refile-folder
+	   "/gmx/Archive/"
+	   t nil
+	   "Where to store saved messages.")
+	 '(mu4e-sent-folder
+	   "/gmx/Sent/"
+	   t nil
+	   "Where to store sent messages.")
+	 '(mu4e-trash-folder
+	   "/gmx/Trash/"
+	   t nil
+	   "Where to store trashed messages.")))
+#+END_SRC
+
+** Notmuch
+
+Notmuch is an e-mail indexer based on tags.
+It doesn't handle moving or deleting e-mail, though we can write a script to handle that.
+
+#+NAME: notmuch
+#+BEGIN_SRC elisp
+  (when (featurep 'notmuch)
+	(custom-set-variables
+	 '(notmuch-fcc-dirs
+	   "~/.mail/gmx/Sent/"
+	   t nil
+	   "Sent mail directory.")
+	 '(notmuch-search-oldest-first
+	   nil
+	   t nil
+	   "Search newest first.")))
+#+END_SRC
+
+* Ediff
+
+Ediff is a package built into Emacs that allows us to compare two or three files and merge the differences.
+
+#+NAME: ediff
+#+BEGIN_SRC elisp
+  (require 'ediff)
+
+  (custom-set-variables
+   '(ediff-split-window-function
+	 'split-window-horizontally
+	 t nil
+	 "Make better use of wide monitors.")
+   '(ediff-window-setup-function
+	 'ediff-setup-windows-plain
+	 t nil
+	 "Keep ediff in a single frame."))
+
+  (global-set-key (kbd "C-x M-d") 'ediff)
+#+END_SRC
+
+* Eshell
+
+Eshell is a shell that allows running Emacs lisp commands.
+For more information, refer to the [[info:eshell][Eshell manual]].
+
+#+NAME: eshell
+#+BEGIN_SRC elisp
+  (require 'eshell)
+
+  (custom-set-variables
+   '(eshell-command-interpreter-max-length
+	 1024
+	 t nil
+	 "Keep a larger history.")
+
+   '(eshell-history-ignore-dups
+	 t
+	 t nil
+	 "Keeps duplicate commands out of Eshell history.")
+
+   '(eshell-input-filter
+	 'eshell-input-filter-initial-space
+	 t nil
+	 "Keeps lines beginning with a space out of Eshell history.")
+
+   '(eshell-prompt-regexp
+	 "^\\[[^]]+\\]-\\[.+?\\]-\\[[#%]\\] "
+	 t nil
+	 "Avoid the prompt interfering with commands and vice-versa.")
+
+   '(eshell-scroll-to-bottom-on-input
+	 'this
+	 t nil
+	 "Prevent us doing blind input.")
+
+   '(eshell-prompt-function
+	 (lambda nil
+	   "An anonymous function that provides a custom Eshell prompt."
+	   (concat
+		(propertize
+		 (concat "["
+				 user-login-name
+				 "@"
+				 (system-name)
+				 "]-["
+				 (abbreviate-file-name
+				  (eshell/pwd))
+				 "]-["
+				 (if (= (user-uid)
+						0)
+					 "#"
+				   "%")
+				 "]")
+		 'face
+		 '(:foreground "dark magenta"))))
+	 "A custom prompt showing the working directory."))
+
+  (global-set-key (kbd "M-<f4>")
+				  'eshell)
+#+END_SRC
+
+* Org mode
+
+Org mode is a very large topic to get in to, refer to the [[info:org][Org mode manual]] for more information.
+
+#+NAME: org-mode
+#+BEGIN_SRC elisp
+  (defconst init-org-directory
+	"~/org/"
+	"Where I store my Orgmode files, excluding templates.")
+
+  (require 'org)
+
+  (custom-set-variables
+   '(org-babel-load-languages
+	 '((C . t)
+	   (dot . t)
+	   (emacs-lisp . t)
+	   (java . t)
+	   (lisp . t)
+	   (perl . t)
+	   (scheme . t))
+	 t nil
+	 "Languages for org-babel source blocks.")
+
+   '(org-capture-templates
+	 '(("g" "General entry" entry
+		(file (concat init-org-directory "/general.org"))
+		(file "~/Templates/general-template.org"))
+	   ("j" "Journal entry" entry
+		(file+olp+datetree (concat init-org-directory "~/org/journal.org"))
+		(file "~/Templates/journal-template.org"))
+	   ("t" "TODO entry" entry
+		(file+headline (concat init-org-directory "~/org/todo.org")
+					   "Tasks")
+		(file "~/Templates/todo-template.org")))
+	 t nil
+	 "Templates for `org-capture'.")
+
+   '(org-default-notes-file
+	 (concat init-org-directory "/misc.org")
+	 t nil
+	 "Where to store miscellaneous notes.")
+
+   '(org-directory
+	 init-org-directory
+	 t nil
+	 "See `init-org-directory'.")
+
+   '(org-fontify-quote-and-verse-blocks
+	 t
+	 t nil
+	 "Allow theming quote and verse blocks."))
+
+  (require 'modus-themes)
+
+  (customize-set-variable 'org-src-block-faces
+						  '(("emacs-lisp" modus-themes-nuanced-magenta)
+							("elisp" modus-themes-nuanced-magenta)
+							("lisp" modus-themes-nuanced-magenta)
+							("scheme" modus-themes-nuanced-magenta)
+							("c" modus-themes-nuanced-blue))
+						  "Use nice colours for source blocks.")
+
+  (global-set-key (kbd "C-x M-o a")
+				  'org-agenda)
+  (global-set-key (kbd "C-x M-o c")
+				  'org-capture)
+  (global-set-key (kbd "C-x M-o l")
+				  'org-store-link)
+#+END_SRC
+
+* Packages
+
+Emacs has a built-in package manager. The default package archives are GNU Elpa and NonGNU Elpa.
+There are some packages that are not available in those archives, so we add Melpa.
+We also define a function that will install various packages used in this configuration that aren't bundled with Emacs.
+...as well as the latest version of Modus themes, which may have improvements over the version bundled with Emacs.
+
+#+NAME: packages
+#+BEGIN_SRC elisp
+  (require 'package)
+  (add-to-list 'package-archives
+			   '("melpa" . "https://melpa.org/packages/")
+			   t)
+
+  (defun init-install-packages nil
+	(interactive)
+	(package-refresh-contents)
+	(dolist (package '(avy consult ddskk delight eglot embark embark-consult
+						   expand-region geiser geiser-chez geiser-gauche
+						   geiser-guile highlight-indent-guides marginalia
+						   modus-themes multiple-cursors orderless
+						   rainbow-delimiters slime smartparens undo-tree
+						   vertico which-key))
+	  (unless (package-installed-p package)
+		(package-install package))))
+#+END_SRC
+
+* Programming
+
+Emacs is a very powerful platform for working with code, with some customisation it can be the most powerful development environment for Lisp.
+Developers using languages like Java or Rust can leverage eglot for working with LSP if they want.
+
+#+NAME: programming
+#+HEADER: :noweb yes
+#+BEGIN_SRC elisp
+  ;; Compiling:
+  <<compiling>>
+
+  ;; Comment style:
+  <<comment-style>>
+
+  ;; Linting:
+  <<linting>>
+
+  ;; Indexing:
+  <<indexing>>
+
+  ;; Indent guides highlighting:
+  <<indent-guides-highlighting>>
+
+  ;; Trailing line highlighting:
+  <<trailing-line-highlighting>>
+
+  ;; Lisp:
+  <<lisp>>
+#+END_SRC
+
+** Compiling
+
+Emacs has built-in support for calling compilers.
+If the compiler shows warnings or errors Emacs can also quickly jump to the relevant line of code.
+
+#+NAME: compiling
+#+BEGIN_SRC elisp
+  (define-key prog-mode-map
+	(kbd "<f7>") 'compile)
+  (define-key prog-mode-map
+	(kbd "<f8>") 'recompile)
+#+END_SRC
+
+** Comment style
+
+Emacs can comment out or uncomment sections of code.
+We can change the style of comments Emacs creates to a multi-line style over the single-line style it defaults to.
+
+#+NAME: comment-style
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'comment-style
+   'extra-line
+   "Use multi-line style for commenting.")
+#+END_SRC
+
+** Linting
+
+Emacs has a built-in linter called Flymake. An alternative called Flycheck exists, you can experiment to see which one fits your use-case better.
+
+#+NAME: linting
+#+BEGIN_SRC elisp
+  (require 'flymake)
+
+  (add-hook 'prog-mode-hook #'flymake-mode)
+#+END_SRC
+
+** Indexing
+
+Emacs can automatically index variables and procedures in a buffer.
+This allows for easy navigating through local code.
+
+#+NAME: indexing
+#+BEGIN_SRC elisp
+  (require 'imenu)
+  (customize-set-variable
+   'imenu-auto-rescan
+   t
+   "Keep Imenu up to date with changes in the buffer.")
+  (add-hook 'prog-mode-hook #'imenu-add-menubar-index)
+#+END_SRC
+
+** Indent guides highlighting
+
+Highlight-indent-guides is a package that draws a highlight to mark indentation.
+
+#+NAME: indent-guides-highlighting
+#+BEGIN_SRC elisp
+  (when (featurep 'highlight-indent-guides)
+	(custom-set-variables
+	 '(highlight-indent-guides-method
+	   'character
+	   t nil
+	   "Highlight indentation with a character.")
+	 '(highlight-indent-guides-responsive
+	   'stack
+	   t nil
+	   "Highlight the current indentation with its parents."))
+
+	(add-hook 'prog-mode-hook
+			  #'highlight-indent-guides-mode))
+#+END_SRC
+
+** Trailing line highlighting
+
+Emacs can highlight trailing whitespace as well as lines running longer that an arbitrary column.
+I set the column to 79 to ensure code displays well on a TTY, but 120 can also work well for ensuring displaying code side-by-side works well.
+Having very long lines of code can be a sign of overly complicated design anyway.
+Emacs will also highlight the last character of the file if the file is missing a final newline.
+
+#+NAME: trailing-line-highlighting
+#+BEGIN_SRC elisp
+  (require 'whitespace)
+
+  (custom-set-variables
+   '(whitespace-line-column
+	 79
+	 t nil
+	 "Highlight text running beyond 79 characters.")
+
+   '(whitespace-style
+	 '(face trailing lines-tail missing-newline-at-eof)
+	 t nil
+	 "Visual highlighting of whitespace and text.
+  We highlight text running beyond `whitespace-line-column', the last character
+  before the end of the file if it isn't a newline, and trailing whitespace."))
+
+  (add-hook 'prog-mode-hook #'whitespace-mode)
+#+END_SRC
+
+** Lisp
+
+Emacs has very good built-in support for working with Lisp code.
+Working with Scheme or Common Lisp code can be improved even further with packages that connect to them.
+If we have smartparens installed we could activate smartparens-strict-mode to ensure S-expressions are always well-formed.
+We could also use paredit mode to work with S-expressions.
+Neither of those is activated in this configuration, but the option is always available.
+
+#+NAME: lisp
+#+HEADER: :noweb yes
+#+BEGIN_SRC elisp
+  ;; Bel:
+  <<bel>>
+
+  ;; Emacs Lisp:
+  <<emacs-lisp>>
+
+  ;; Rainbow delimiters:
+  <<rainbow-delimiters>>
+
+  ;; Scheme:
+  <<scheme>>
+#+END_SRC
+
+*** Bel
+
+We can add the .bel extension to the list of extensions Emacs recognises.
+Thus we can take advantage of Emacs' built-in Lisp editing functions.
+
+#+NAME: bel
+#+BEGIN_SRC elisp
+  (add-to-list 'auto-mode-alist
+			   '(("\\.bel\\'" . lisp-data-mode))
+			   t)
+#+END_SRC
+
+*** Emacs Lisp
+
+When calling eval-last-sexp with a prefix argument, Emacs normally inserts the result of evaluation after the sexp.
+By defining a specialised function we can make it replace that sexp instead.
+
+#+NAME: emacs-lisp
+#+BEGIN_SRC elisp
+  (defun eval-and-optionally-replace-last-sexp (arg)
+	"When called with an argument, replace the sexp before point.
+
+  Calls `eval-last-sexp' with ARG."
+	(interactive "P")
+	(if arg
+		(let ((pos (point)))
+		  (eval-last-sexp arg)
+		  (goto-char pos)
+		  (backward-kill-sexp)
+		  (forward-sexp))
+	  (eval-last-sexp arg)))
+
+  (define-key emacs-lisp-mode-map
+	[remap eval-last-sexp]
+	'eval-and-optionally-replace-last-sexp)
+#+END_SRC
+
+*** Rainbow delimiters
+
+The rainbow delimiters package automatically changes the colours of delimiters based on their depth.
+
+#+NAME: rainbow-delimiters
+#+BEGIN_SRC elisp
+  (when (featurep 'rainbow-delimiter)
+	(when (featurep 'geiser)
+	  (add-hook 'geiser-repl-mode-hook #'rainbow-delimiters-mode))
+	(add-hook 'lisp-data-mode-hook #'rainbow-delimiters-mode)
+	(add-hook 'inferior-scheme-mode-hook #'rainbow-delimiters-mode))
+#+END_SRC
+
+*** Scheme
+
+For programming Scheme we can use Geiser to interface with the REPL of our Scheme of choice.
+The implementations for Chez Scheme, Gauche, and Guile are added here, others can be added as needed.
+
+#+NAME: scheme
+#+BEGIN_SRC elisp
+  (customize-set-variable
+   'scheme-program-name
+   "guile"
+   "Make `run-scheme' invoke GNU Guile.")
+
+  (when (featurep 'geiser)
+	(custom-set-variables
+	 '(geiser-default-implementation
+	   'guile
+	   t nil
+	   "Use Guile as default Geiser backend.")
+	 '(geiser-active-implementations
+	   '(chez gauche guile)
+	   t nil
+	   "Activate the Guile backends.")
+	 '(geiser-implementations-alist
+	   '(((regexp "\\.scm$") guile))
+	   t nil
+	   "Activate Guile as the backend for .scm files.")))
+#+END_SRC
+
+* Putting it all together
+
+Here we complete the initialisation file.
+With noweb the various sections will be added in when the code is evaluated.
+The tangle header specifies where the code ends up when we decide to tangle it up.
+
+#+NAME: complete-file
+#+HEADER: :noweb yes
+#+HEADER: :tangle init.el
+#+BEGIN_SRC elisp
+  ;;; init.el --- Emacs initialisation file.           -*- lexical-binding: t; -*-
+
+  ;; Copyright (C) 2022  Tim Van den Langenbergh
+
+  ;; Author: Tim Van den Langenbergh <tmt_vdl@gmx.com>
+  ;; Keywords: convenience, local
+
+  ;; This program is free software; you can redistribute it and/or modify
+  ;; it under the terms of the GNU Affero General Public License as
+  ;; published by the Free Software Foundation, either version 3 of the
+  ;; License, or (at your option) any later version.
+
+  ;; This program is distributed in the hope that it will be useful,
+  ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ;; GNU Affero General Public License for more details.
+
+  ;; You should have received a copy of the GNU Affero General Public License
+  ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+  ;;; Commentary:
+
+  ;; See init.org for a full explanation of what this file holds.
+
+  ;;; Code:
+
+  ;;; General:
+  <<general>>
+
+  ;;; Look and feel:
+  <<look-and-feel>>
+
+  ;;; Dired:
+  <<dired>>
+
+  ;;; E-mail:
+  <<e-mail>>
+
+  ;;; Ediff:
+  <<ediff>>
+
+  ;;; Eshell:
+  <<eshell>>
+
+  ;;; Org mode:
+  <<org-mode>>
+
+  ;;; Packages:
+  <<packages>>
+
+  ;;; Programming:
+  <<programming>>
+
+  (provide 'init)
+  ;;; init.el ends here
+#+END_SRC
+
+* License
+
+init.org - A literate GNU Emacs initialisation file
+Copyright (C) 2022  Tim Van den Langenbergh
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
