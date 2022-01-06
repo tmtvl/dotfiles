@@ -1578,7 +1578,7 @@ Thus we can take advantage of Emacs' built-in Lisp editing functions.
 #+NAME: bel
 #+BEGIN_SRC elisp
   (add-to-list 'auto-mode-alist
-			   '(("\\.bel\\'" . lisp-data-mode))
+			   '("\\.bel\\'" . lisp-data-mode)
 			   t)
 #+END_SRC
 
