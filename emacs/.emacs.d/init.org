@@ -1406,10 +1406,10 @@ We also define a function that will install various packages used in this config
   (defun init-install-packages nil
 	(interactive)
 	(package-refresh-contents)
-	(dolist (package '(avy consult ddskk delight eglot embark embark-consult
-						   expand-region geiser geiser-chez geiser-gauche
-						   geiser-guile highlight-indent-guides marginalia
-						   modus-themes multiple-cursors orderless
+	(dolist (package '(avy bison-mode consult ddskk delight eglot embark
+						   embark-consult expand-region geiser geiser-chez
+						   geiser-gauche geiser-guile highlight-indent-guides
+						   marginalia modus-themes multiple-cursors orderless
 						   rainbow-delimiters slime smartparens undo-tree
 						   vertico which-key))
 	  (unless (package-installed-p package)
