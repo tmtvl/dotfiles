@@ -36,7 +36,8 @@
 		(org-babel-tangle)
 		(load-file init-el-file)
 		(byte-compile-file init-el-file)
-		(load init-el-file))
+		(load init-el-file)
+		(kill-buffer))
 	(warn "Could not find init.org!")))
 
 (provide 'init)

@@ -171,8 +171,8 @@ Try to load various features before proceeding with the initialisation.
 #+BEGIN_SRC elisp
   (dolist (feature '(avy consult delight embark embark-consult expand-region
 						 geiser highlight-indent-guides marginalia modus-themes
-						 mu4e multiple-cursors notmuch orderless
-						 rainbow-delimiters smartparens undo-tree vertico
+						 multiple-cursors orderless rainbow-delimiters
+						 smartparens-config smartparens undo-tree vertico
 						 which-key))
 	(ignore-errors
 	  (require feature)))
@@ -198,7 +198,8 @@ As we have defined our entire initialisation file in this org file, it may behov
 			(org-babel-tangle)
 			(load-file init-el-file)
 			(byte-compile-file init-el-file)
-			(load init-el-file))
+			(load init-el-file)
+			(kill-buffer))
 		(warn "Could not find init.org!"))))
 #+END_SRC
 
@@ -1189,32 +1190,33 @@ Mu is also known as maildir-utils.
 
 #+NAME: mu4e
 #+BEGIN_SRC elisp
-  (when (featurep 'mu4e)
-	(custom-set-variables
-	 '(mu4e-attachment-dir
-	   "~/Downloads/"
-	   t nil
-	   "Where to store attachments.")
-	 '(mu4e-drafts-folder
-	   "/gmx/Drafts/"
-	   t nil
-	   "Where to store drafts.")
-	 '(mu4e-get-mail-command
-	   "mbsync gmx"
-	   t nil
-	   "Sync with isync.")
-	 '(mu4e-refile-folder
-	   "/gmx/Archive/"
-	   t nil
-	   "Where to store saved messages.")
-	 '(mu4e-sent-folder
-	   "/gmx/Sent/"
-	   t nil
-	   "Where to store sent messages.")
-	 '(mu4e-trash-folder
-	   "/gmx/Trash/"
-	   t nil
-	   "Where to store trashed messages.")))
+  (require 'mu4e)
+
+  (custom-set-variables
+   '(mu4e-attachment-dir
+	 "~/Downloads/"
+	 t nil
+	 "Where to store attachments.")
+   '(mu4e-drafts-folder
+	 "/gmx/Drafts/"
+	 t nil
+	 "Where to store drafts.")
+   '(mu4e-get-mail-command
+	 "mbsync gmx"
+	 t nil
+	 "Sync with isync.")
+   '(mu4e-refile-folder
+	 "/gmx/Archive/"
+	 t nil
+	 "Where to store saved messages.")
+   '(mu4e-sent-folder
+	 "/gmx/Sent/"
+	 t nil
+	 "Where to store sent messages.")
+   '(mu4e-trash-folder
+	 "/gmx/Trash/"
+	 t nil
+	 "Where to store trashed messages."))
 #+END_SRC
 
 ** Notmuch
@@ -1224,16 +1226,17 @@ It doesn't handle moving or deleting e-mail, though we can write a script to han
 
 #+NAME: notmuch
 #+BEGIN_SRC elisp
-  (when (featurep 'notmuch)
-	(custom-set-variables
-	 '(notmuch-fcc-dirs
-	   "~/.mail/gmx/Sent/"
-	   t nil
-	   "Sent mail directory.")
-	 '(notmuch-search-oldest-first
-	   nil
-	   t nil
-	   "Search newest first.")))
+  (require 'notmuch)
+
+  (custom-set-variables
+   '(notmuch-fcc-dirs
+	 "~/.mail/gmx/Sent/"
+	 t nil
+	 "Sent mail directory.")
+   '(notmuch-search-oldest-first
+	 nil
+	 t nil
+	 "Search newest first."))
 #+END_SRC
 
 * Ediff
@@ -1324,10 +1327,6 @@ Org mode is a very large topic to get in to, refer to the [[info:org][Org mode m
 
 #+NAME: org-mode
 #+BEGIN_SRC elisp
-  (defconst init-org-directory
-	"~/org/"
-	"Where I store my Orgmode files, excluding templates.")
-
   (require 'org)
 
   (custom-set-variables
@@ -1344,27 +1343,27 @@ Org mode is a very large topic to get in to, refer to the [[info:org][Org mode m
 
    '(org-capture-templates
 	 '(("g" "General entry" entry
-		(file (concat init-org-directory "/general.org"))
+		(file "~/org/general.org")
 		(file "~/Templates/general-template.org"))
 	   ("j" "Journal entry" entry
-		(file+olp+datetree (concat init-org-directory "~/org/journal.org"))
+		(file+olp+datetree "~/org/journal.org")
 		(file "~/Templates/journal-template.org"))
 	   ("t" "TODO entry" entry
-		(file+headline (concat init-org-directory "~/org/todo.org")
+		(file+headline "~/org/todo.org"
 					   "Tasks")
 		(file "~/Templates/todo-template.org")))
 	 t nil
 	 "Templates for `org-capture'.")
 
    '(org-default-notes-file
-	 (concat init-org-directory "/misc.org")
+	 (concat "~/org/" "/misc.org")
 	 t nil
 	 "Where to store miscellaneous notes.")
 
    '(org-directory
-	 init-org-directory
+	 "~/org/"
 	 t nil
-	 "See `init-org-directory'.")
+	 "Where I store my Orgmode files, excluding templates.")
 
    '(org-fontify-quote-and-verse-blocks
 	 t
