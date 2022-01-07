@@ -1197,6 +1197,10 @@ Mu is also known as maildir-utils.
 	 "~/Downloads/"
 	 t nil
 	 "Where to store attachments.")
+   '(mu4e-compose-format-flowed
+	 t
+	 t nil
+	 "Allow long lines in sent e-mail.")
    '(mu4e-drafts-folder
 	 "/gmx/Drafts/"
 	 t nil
