@@ -1144,6 +1144,10 @@ Emacs has built-in facilities to send e-mail via the SMTP protocol.
 	 "tmt_vdl@gmx.com"
 	 t nil
 	 "E-mail address for receiving and sending e-mail.")
+   '(message-fill-column
+	 nil
+	 t nil
+	 "Allow long lines in messages.")
    '(send-mail-function
 	 'smtpmail-send-it
 	 t nil
@@ -1197,10 +1201,6 @@ Mu is also known as maildir-utils.
 	 "~/Downloads/"
 	 t nil
 	 "Where to store attachments.")
-   '(mu4e-compose-format-flowed
-	 t
-	 t nil
-	 "Allow long lines in sent e-mail.")
    '(mu4e-drafts-folder
 	 "/gmx/Drafts/"
 	 t nil
