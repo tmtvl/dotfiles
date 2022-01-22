@@ -120,21 +120,28 @@ The variable "garbage-collection-messages" may be set to t to make the garbage c
 #+NAME: garbage-collection
 #+BEGIN_SRC elisp
   (defconst init-preferred-gc-threshold
-    (* 8 1024 1024)
-    "An 8MB threshold to balance speed and responsiveness.")
+	(* 8 1024 1024)
+	"An 8MB threshold to balance speed and responsiveness.")
 
-  (customize-set-variable
-   'gc-cons-threshold
-   init-preferred-gc-threshold
-   "Set the default GC threshold.")
+  (custom-set-variables
+   '(gc-cons-percentage
+	 2
+	 t
+	 nil
+	 "Increase GC percentage for performance.")
+   '(gc-cons-threshold
+	 init-preferred-gc-threshold
+	 t
+	 nil
+	 "Set the default GC threshold."))
 
   (defun inhibit-gc nil
-    "Inhibit garbage collection."
-    (setq gc-cons-threshold most-positive-fixnum))
+	"Inhibit garbage collection."
+	(setq gc-cons-threshold most-positive-fixnum))
 
   (defun resume-gc nil
-    "Resume garbage collection."
-    (setq gc-cons-threshold init-preferred-gc-threshold))
+	"Resume garbage collection."
+	(setq gc-cons-threshold init-preferred-gc-threshold))
 
   (add-hook 'minibuffer-setup-hook #'inhibit-gc)
   (add-hook 'minibuffer-exit-hook #'resume-gc)
@@ -171,9 +178,9 @@ Try to load various features before proceeding with the initialisation.
 #+BEGIN_SRC elisp
   (dolist (feature '(avy consult delight embark embark-consult expand-region
 						 geiser highlight-indent-guides marginalia modus-themes
-						 multiple-cursors orderless rainbow-delimiters
-						 smartparens-config smartparens undo-tree vertico
-						 which-key))
+						 multiple-cursors orderless pdf-tools rainbow-mode
+						 rainbow-delimiters smartparens-config smartparens
+						 undo-tree vertico which-key))
 	(ignore-errors
 	  (require feature)))
 #+END_SRC
@@ -334,39 +341,87 @@ This configuration is only meant to be used for English, Dutch, German, French, 
 	(set-fontset-font
 	 t
 	 'han
-	 (font-spec :family "Kurinto Text JP"))
+	 (font-spec :family "Ume Mincho"))
 	(set-fontset-font
 	 t
 	 'han
-	 (font-spec :family "Kurinto Text TC")
+	 (font-spec :family "Kurinto Serif JP")
 	 nil
 	 'append)
 	(set-fontset-font
 	 t
 	 'han
-	 (font-spec :family "Kurinto Text CJK")
+	 (font-spec :family "Kurinto Serif KR")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'han
+	 (font-spec :family "Kurinto Serif TC")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'han
+	 (font-spec :family "Kurinto Serif CJK")
 	 nil
 	 'append)
 	;; かな
 	(set-fontset-font
 	 t
 	 'kana
-	 (font-spec :family "Kurinto Text JP"))
+	 (font-spec :family "Ume Mincho"))
 	(set-fontset-font
 	 t
 	 'kana
-	 (font-spec :family "Kurinto Text CJK")
+	 (font-spec :family "Kurinto Serif JP")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Serif KR")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Serif TC")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Serif CJK")
 	 nil
 	 'append)
 	;; Miscellaneous CJK characters.
 	(set-fontset-font
 	 t
 	 'cjk-misc
-	 (font-spec :family "Kurinto Text JP"))
+	 (font-spec :family "Ume Mincho"))
 	(set-fontset-font
 	 t
 	 'cjk-misc
-	 (font-spec :family "Kurinto Text CJK")
+	 (font-spec :family "Kurinto Serif JP")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Serif KR")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Serif TC")
+	 nil
+	 'append)
+	(set-fontset-font
+	 t
+	 'kana
+	 (font-spec :family "Kurinto Serif CJK")
 	 nil
 	 'append)
 	;; Emoji 🐐🌮
@@ -486,16 +541,16 @@ Depending on the window manager you use Emacs may by default only resize to mult
 #+BEGIN_SRC elisp
   (custom-set-variables
    '(default-frame-alist
-      '((font . "Kurinto Mono 10")
+	  '((font . "Libertinus Mono 11")
 	(fullscreen . maximized)
 	(left-fringe . 2)
 	(right-fringe . 2))
-      t nil
-      "Appearance of a new frame.")
+	  t nil
+	  "Appearance of a new frame.")
    '(frame-resize-pixelwise
-     t
-     t nil
-     "Don't restrict frame size to multiples of character width and height."))
+	 t
+	 t nil
+	 "Don't restrict frame size to multiples of character width and height."))
 #+END_SRC
 
 ** Display time and date
@@ -876,6 +931,16 @@ This allows easy editing of related sections of text.
 	(global-set-key (kbd "C-S-<mouse-1>") 'mc/add-cursor-on-click))
 #+END_SRC
 
+** PDF tools
+
+The PDF tools package improves the way Emacs handles PDF files.
+
+#+name: pdf-tools
+#+begin_src elisp
+  (when (featurep 'pdf-tools)
+	(pdf-loader-install))
+#+end_src
+
 ** Undo tree
 
 The undo tree package changes the way Emacs' undo functionality works.
@@ -935,7 +1000,7 @@ Based on the font we use we may also want to adjust some faces.
 ** Custom faces
 
 Faces are basically the way Emacs themes certain text.
-Since we're using Kurinto Mono as our standard fixed-pitch font and it doesn't offer a serif variation we will want to adjust the fixed-pitch-serif face.
+Libertinus Mono is a serif fixed-pitch font.
 For variable-pitch text (non-monospace) I prefer using a serif font.
 
 #+NAME: custom-faces
@@ -944,17 +1009,15 @@ For variable-pitch text (non-monospace) I prefer using a serif font.
   (custom-set-faces
    '(fixed-pitch
      ((t
-       (:family "Kurinto Mono")))
+       (:family "Libertinus Mono")))
      t "The standard monospace font.")
    '(fixed-pitch-serif
      ((t
-       (:inherit (fixed-pitch)
-		 :box "grey80")))
-     t "As Kurinto does not provide a serif monospace font, we just put a box
-  around the regular monospace font.")
+       (:inherit (fixed-pitch))))
+     t "As Libertinus Mono is a serif monospace font, we just use it.")
    '(variable-pitch
      ((t
-       (:family "Kurinto Text")))
+       (:family "Libertinus Serif")))
      t "Font to use for variable-pitch faces."))
 #+END_SRC
 
@@ -1163,7 +1226,7 @@ Emacs has built-in facilities to send e-mail via the SMTP protocol.
    '(smtpmail-stream-type
 	 'starttls
 	 t nil
-	 "Ask the server ot upgrade to its most up-to-date SSL/TLS version."))
+	 "Ask the server to upgrade to its most up-to-date SSL/TLS version."))
 #+END_SRC
 
 ** Sign e-mail
@@ -1318,7 +1381,8 @@ For more information, refer to the [[info:eshell][Eshell manual]].
 				   "%")
 				 "]")
 		 'face
-		 '(:foreground "dark magenta"))))
+		 '(:foreground "dark magenta"))
+		" "))
 	 "A custom prompt showing the working directory."))
 
   (global-set-key (kbd "M-<f4>")
@@ -1413,8 +1477,8 @@ We also define a function that will install various packages used in this config
 						   embark-consult expand-region geiser geiser-chez
 						   geiser-gauche geiser-guile highlight-indent-guides
 						   marginalia modus-themes multiple-cursors orderless
-						   rainbow-delimiters slime smartparens undo-tree
-						   vertico which-key))
+						   pdf-tools rainbow-mode rainbow-delimiters slime
+						   smartparens undo-tree vertico which-key))
 	  (unless (package-installed-p package)
 		(package-install package))))
 #+END_SRC
